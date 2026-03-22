@@ -14,7 +14,6 @@ export const subscribeToDeliveries = (
   return firestore()
     .collection(COLLECTION)
     .where('driverId', '==', driverId)
-    .orderBy('createdAt', 'desc')
     .onSnapshot(
       (snapshot) => {
         const deliveries: Delivery[] = snapshot.docs.map((doc) => ({

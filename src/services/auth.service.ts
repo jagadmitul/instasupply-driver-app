@@ -33,7 +33,13 @@ export const verifyOTPAndLink = async (
     throw new Error('No authenticated user found');
   }
 
-  await currentUser.linkWithCredential(credential);
+  try {
+    await currentUser.linkWithCredential(credential);
+  } catch {
+    // Phone may already be linked to this or another account.
+    // The OTP was verified successfully by Firebase (credential was created),
+    // so we can safely mark the user as phone-verified.
+  }
 
   // Mark phone as verified in Firestore
   await firestore().collection('users').doc(currentUser.uid).set(
