@@ -10,34 +10,51 @@ interface AuthState {
 
 /**
  * Hook to manage Firebase authentication state.
- * Tracks both auth state and phone verification status from Firestore.
+ * Uses real-time Firestore listener for phoneVerified so navigation
+ * updates immediately when OTP verification completes.
  */
 export const useAuth = (): AuthState => {
   const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Listen to Firebase Auth state
   useEffect(() => {
-    const unsubscribeAuth = auth().onAuthStateChanged(async (firebaseUser) => {
+    const unsubscribeAuth = auth().onAuthStateChanged((firebaseUser) => {
       setUser(firebaseUser);
-
-      if (firebaseUser) {
-        // Check phone verification status from Firestore
-        const doc = await firestore()
-          .collection('users')
-          .doc(firebaseUser.uid)
-          .get();
-
-        setPhoneVerified(doc.data()?.phoneVerified === true);
-      } else {
+      if (!firebaseUser) {
         setPhoneVerified(false);
+        setLoading(false);
       }
-
-      setLoading(false);
     });
 
     return unsubscribeAuth;
   }, []);
+
+  // Real-time listener on user's Firestore doc for phoneVerified
+  useEffect(() => {
+    if (!user?.uid) {
+      setLoading(false);
+      return;
+    }
+
+    const unsubscribeDoc = firestore()
+      .collection('users')
+      .doc(user.uid)
+      .onSnapshot(
+        (doc) => {
+          setPhoneVerified(doc.data()?.phoneVerified === true);
+          setLoading(false);
+        },
+        () => {
+          // Doc might not exist yet — that's fine
+          setPhoneVerified(false);
+          setLoading(false);
+        },
+      );
+
+    return unsubscribeDoc;
+  }, [user?.uid]);
 
   return { user, phoneVerified, loading };
 };
