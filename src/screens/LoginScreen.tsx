@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { signInWithEmail, ensureUserProfile, storeEmailCredentials } from '../services/auth.service';
+import { signInWithEmail, ensureUserProfile } from '../services/auth.service';
 
 /**
  * Login screen with email and password authentication via Firebase
@@ -39,8 +39,6 @@ export const LoginScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      // Store credentials for re-auth after phone OTP verification
-      storeEmailCredentials(trimmedEmail, password);
       const credential = await signInWithEmail(trimmedEmail, password);
       await ensureUserProfile(credential.user);
     } catch (error: unknown) {
