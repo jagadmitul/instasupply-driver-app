@@ -37,6 +37,15 @@ export const updateDeliveryStatus = async (
   deliveryId: string,
   status: DeliveryStatus,
 ): Promise<void> => {
+  if (!deliveryId?.trim()) {
+    throw new Error('Invalid delivery ID');
+  }
+
+  const validStatuses: DeliveryStatus[] = ['pending', 'picked_up', 'in_transit', 'delivered'];
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Invalid delivery status: ${status}`);
+  }
+
   await firestore().collection(COLLECTION).doc(deliveryId).update({
     status,
     updatedAt: firestore.FieldValue.serverTimestamp(),

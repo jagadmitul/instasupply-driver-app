@@ -35,10 +35,12 @@ export const verifyOTPAndLink = async (
 
   try {
     await currentUser.linkWithCredential(credential);
-  } catch {
+  } catch (error: unknown) {
     // Phone may already be linked to this or another account.
-    // The OTP was verified successfully by Firebase (credential was created),
-    // so we can safely mark the user as phone-verified.
+    // Common codes: auth/provider-already-linked, auth/credential-already-in-use
+    // The OTP was validated by Firebase, so we proceed to mark phone as verified.
+    const errorCode = (error as { code?: string }).code;
+    console.warn('Phone link skipped:', errorCode || 'unknown');
   }
 
   // Mark phone as verified in Firestore

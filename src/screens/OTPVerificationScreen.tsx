@@ -22,14 +22,29 @@ export const OTPVerificationScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const handleSendOTP = async () => {
-    const cleaned = phoneNumber.trim();
+    // Strip spaces, dashes, and parentheses
+    const cleaned = phoneNumber.trim().replace(/[\s\-()]/g, '');
     if (!cleaned) {
       Alert.alert('Error', 'Please enter your mobile number');
       return;
     }
 
-    // Ensure phone number includes country code
+    // Add +91 if no country code
     const formatted = cleaned.startsWith('+') ? cleaned : `+91${cleaned}`;
+
+    // Validate: must be + followed by country code and 10 digits (Indian)
+    // or valid international format (7-15 digits after +)
+    const digitsOnly = formatted.replace(/^\+/, '');
+    if (!/^\d{10,15}$/.test(digitsOnly)) {
+      Alert.alert('Error', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    // For Indian numbers, validate exactly 10 digits after +91
+    if (formatted.startsWith('+91') && digitsOnly.length !== 12) {
+      Alert.alert('Error', 'Indian mobile number must be exactly 10 digits');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -46,8 +61,13 @@ export const OTPVerificationScreen: React.FC = () => {
   };
 
   const handleVerifyOTP = async () => {
-    if (!verificationId || !otpCode.trim()) {
+    const trimmedCode = otpCode.trim();
+    if (!verificationId || !trimmedCode) {
       Alert.alert('Error', 'Please enter the OTP code');
+      return;
+    }
+    if (trimmedCode.length !== 6 || !/^\d{6}$/.test(trimmedCode)) {
+      Alert.alert('Error', 'OTP must be exactly 6 digits');
       return;
     }
 
@@ -81,10 +101,11 @@ export const OTPVerificationScreen: React.FC = () => {
             <TextInput
               style={styles.input}
               value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              placeholder="+91 9876543210"
+              onChangeText={(text) => setPhoneNumber(text.replace(/[^0-9+\-\s]/g, ''))}
+              placeholder="9876543210"
               placeholderTextColor="#9CA3AF"
               keyboardType="phone-pad"
+              maxLength={15}
               editable={!loading}
             />
 
