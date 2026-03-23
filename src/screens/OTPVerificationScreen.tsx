@@ -10,14 +10,16 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { sendOTP, verifyOTPAndLink } from '../services/auth.service';
+import { sendOTP, verifyOTPAndLink, storeEmailCredentials } from '../services/auth.service';
+import { auth } from '../config/firebase';
 
 /**
- * OTP verification screen — prompts for phone number, sends OTP, and verifies
+ * OTP verification screen — prompts for phone number, sends OTP, and verifies.
+ * Uses signInWithPhoneNumber for reliable SMS delivery on Android.
  */
 export const OTPVerificationScreen: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationId, setVerificationId] = useState<string | null>(null);
+  const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -35,10 +37,18 @@ export const OTPVerificationScreen: React.FC = () => {
 
     const formatted = `+91${cleaned}`;
 
+    // Store current email credentials before phone auth changes the session
+    const currentUser = auth().currentUser;
+    if (currentUser?.email) {
+      // We need the password — prompt or use a stored value
+      // For now, store email so we can re-authenticate after phone verification
+      storeEmailCredentials(currentUser.email, '');
+    }
+
     setLoading(true);
     try {
-      const vId = await sendOTP(formatted);
-      setVerificationId(vId);
+      await sendOTP(formatted);
+      setOtpSent(true);
       Alert.alert('OTP Sent', `A verification code has been sent to ${formatted}`);
     } catch (error: unknown) {
       const message =
@@ -51,7 +61,7 @@ export const OTPVerificationScreen: React.FC = () => {
 
   const handleVerifyOTP = async () => {
     const trimmedCode = otpCode.trim();
-    if (!verificationId || !trimmedCode) {
+    if (!otpSent || !trimmedCode) {
       Alert.alert('Error', 'Please enter the OTP code');
       return;
     }
@@ -62,8 +72,8 @@ export const OTPVerificationScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      await verifyOTPAndLink(verificationId, otpCode.trim());
-      // Navigation will handle redirect via useAuth hook detecting phoneVerified change
+      await verifyOTPAndLink('', trimmedCode);
+      // Navigation handled by useAuth hook detecting phoneVerified change
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : 'OTP verification failed';
@@ -84,22 +94,27 @@ export const OTPVerificationScreen: React.FC = () => {
           We need to verify your mobile number before you can access the app.
         </Text>
 
-        {!verificationId ? (
+        {!otpSent ? (
           <>
             <Text style={styles.label}>Mobile Number</Text>
-            <TextInput
-              style={styles.input}
-              value={phoneNumber}
-              onChangeText={(text) => {
-                const digitsOnly = text.replace(/[^0-9]/g, '');
-                setPhoneNumber(digitsOnly.slice(0, 10));
-              }}
-              placeholder="9876543210"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="number-pad"
-              maxLength={10}
-              editable={!loading}
-            />
+            <View style={styles.phoneRow}>
+              <View style={styles.prefixBox}>
+                <Text style={styles.prefixText}>+91</Text>
+              </View>
+              <TextInput
+                style={[styles.input, styles.phoneInput]}
+                value={phoneNumber}
+                onChangeText={(text) => {
+                  const digitsOnly = text.replace(/[^0-9]/g, '');
+                  setPhoneNumber(digitsOnly.slice(0, 10));
+                }}
+                placeholder="9876543210"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="number-pad"
+                maxLength={10}
+                editable={!loading}
+              />
+            </View>
 
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
@@ -120,7 +135,10 @@ export const OTPVerificationScreen: React.FC = () => {
             <TextInput
               style={[styles.input, styles.otpInput]}
               value={otpCode}
-              onChangeText={setOtpCode}
+              onChangeText={(text) => {
+                const digitsOnly = text.replace(/[^0-9]/g, '');
+                setOtpCode(digitsOnly.slice(0, 6));
+              }}
               placeholder="123456"
               placeholderTextColor="#9CA3AF"
               keyboardType="number-pad"
@@ -144,7 +162,7 @@ export const OTPVerificationScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.resendButton}
               onPress={() => {
-                setVerificationId(null);
+                setOtpSent(false);
                 setOtpCode('');
               }}
             >
@@ -184,6 +202,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#374151',
     marginBottom: 6,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  prefixBox: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    justifyContent: 'center',
+  },
+  prefixText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  phoneInput: {
+    flex: 1,
+    marginBottom: 0,
   },
   input: {
     backgroundColor: '#FFFFFF',

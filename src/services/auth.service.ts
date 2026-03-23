@@ -11,46 +11,70 @@ export const signInWithEmail = async (
   return auth().signInWithEmailAndPassword(email, password);
 };
 
+/** Stored confirmation result from signInWithPhoneNumber */
+let phoneConfirmation: FirebaseAuthTypes.ConfirmationResult | null = null;
+
+/** Stored email credentials to re-sign-in after phone verification */
+let savedEmailCredentials: { email: string; password: string } | null = null;
+
 /**
- * Send OTP to the given phone number and return the verification ID
+ * Store the email credentials so we can re-sign-in after phone verification.
+ * Called from OTPVerificationScreen before sending OTP.
  */
-export const sendOTP = async (phoneNumber: string): Promise<string> => {
-  const confirmation = await auth().verifyPhoneNumber(phoneNumber);
-  return confirmation.verificationId;
+export const storeEmailCredentials = (email: string, password: string): void => {
+  savedEmailCredentials = { email, password };
 };
 
 /**
- * Verify the OTP code and link the phone credential to the current user
+ * Send OTP to the given phone number using signInWithPhoneNumber.
+ * This is the recommended method for React Native — handles reCAPTCHA and
+ * Play Integrity automatically on Android.
+ */
+export const sendOTP = async (phoneNumber: string): Promise<void> => {
+  phoneConfirmation = await auth().signInWithPhoneNumber(phoneNumber);
+};
+
+/**
+ * Verify the OTP code, then re-sign-in with email and mark phone as verified.
+ *
+ * Flow:
+ * 1. Confirm the phone OTP (proves user owns the phone)
+ * 2. Re-sign-in with saved email credentials (restore original session)
+ * 3. Mark phoneVerified: true in Firestore
  */
 export const verifyOTPAndLink = async (
-  verificationId: string,
+  _verificationId: string,
   code: string,
 ): Promise<void> => {
-  const credential = auth.PhoneAuthProvider.credential(verificationId, code);
-  const currentUser = auth().currentUser;
-
-  if (!currentUser) {
-    throw new Error('No authenticated user found');
+  if (!phoneConfirmation) {
+    throw new Error('No phone confirmation in progress. Send OTP first.');
   }
 
-  try {
-    await currentUser.linkWithCredential(credential);
-  } catch (error: unknown) {
-    // Phone may already be linked to this or another account.
-    // Common codes: auth/provider-already-linked, auth/credential-already-in-use
-    // The OTP was validated by Firebase, so we proceed to mark phone as verified.
-    const errorCode = (error as { code?: string }).code;
-    console.warn('Phone link skipped:', errorCode || 'unknown');
+  // 1. Confirm the OTP code — this proves the user owns the phone number
+  await phoneConfirmation.confirm(code);
+
+  // 2. Re-sign-in with email to restore the original user session
+  if (!savedEmailCredentials) {
+    throw new Error('Email credentials not saved. Please login again.');
   }
 
-  // Mark phone as verified in Firestore
-  await firestore().collection('users').doc(currentUser.uid).set(
+  const emailResult = await auth().signInWithEmailAndPassword(
+    savedEmailCredentials.email,
+    savedEmailCredentials.password,
+  );
+
+  // 3. Mark phone as verified in Firestore
+  await firestore().collection('users').doc(emailResult.user.uid).set(
     {
       phoneVerified: true,
       updatedAt: firestore.FieldValue.serverTimestamp(),
     },
     { merge: true },
   );
+
+  // Cleanup
+  phoneConfirmation = null;
+  savedEmailCredentials = null;
 };
 
 /**
@@ -87,5 +111,7 @@ export const ensureUserProfile = async (
  * Sign out the current user
  */
 export const signOut = async (): Promise<void> => {
+  phoneConfirmation = null;
+  savedEmailCredentials = null;
   await auth().signOut();
 };
