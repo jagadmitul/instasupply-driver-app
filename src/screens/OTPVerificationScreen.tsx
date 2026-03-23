@@ -10,8 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { sendOTP, verifyOTPAndLink, storeEmailCredentials } from '../services/auth.service';
-import { auth } from '../config/firebase';
+import { sendOTP, verifyOTPAndLink } from '../services/auth.service';
 
 /**
  * OTP verification screen — prompts for phone number, sends OTP, and verifies.
@@ -37,13 +36,7 @@ export const OTPVerificationScreen: React.FC = () => {
 
     const formatted = `+91${cleaned}`;
 
-    // Store current email credentials before phone auth changes the session
-    const currentUser = auth().currentUser;
-    if (currentUser?.email) {
-      // We need the password — prompt or use a stored value
-      // For now, store email so we can re-authenticate after phone verification
-      storeEmailCredentials(currentUser.email, '');
-    }
+    // Email credentials are already stored from LoginScreen — don't overwrite
 
     setLoading(true);
     try {
