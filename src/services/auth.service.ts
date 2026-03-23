@@ -2,13 +2,6 @@ import { auth, firestore } from '../config/firebase';
 import type { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 /**
- * Disable app verification for testing with test phone numbers.
- * For real SMS, this is bypassed via verifyPhoneNumber which uses
- * native Android auto-verification (reads SMS automatically).
- */
-auth().settings.appVerificationDisabledForTesting = true;
-
-/**
  * Sign in with email and password via Firebase Auth
  */
 export const signInWithEmail = async (
@@ -17,6 +10,9 @@ export const signInWithEmail = async (
 ): Promise<FirebaseAuthTypes.UserCredential> => {
   return auth().signInWithEmailAndPassword(email, password);
 };
+
+/** Stored confirmation result from signInWithPhoneNumber */
+let phoneConfirmation: FirebaseAuthTypes.ConfirmationResult | null = null;
 
 /** Stored email credentials to re-sign-in after phone verification */
 let savedEmailCredentials: { email: string; password: string } | null = null;
@@ -28,55 +24,40 @@ export const storeEmailCredentials = (email: string, password: string): void => 
   savedEmailCredentials = { email, password };
 };
 
-/** Stored verification ID from verifyPhoneNumber */
-let storedVerificationId: string | null = null;
-
 /**
- * Send OTP to the given phone number.
- * Uses verifyPhoneNumber which supports both test numbers and real SMS.
- * With appVerificationDisabledForTesting=true, test numbers work instantly.
- * Real numbers use native Android auto-verification (no reCAPTCHA needed).
+ * Send OTP via signInWithPhoneNumber — triggers reCAPTCHA on sideloaded APKs
+ * (brief browser redirect, standard Firebase behavior), then sends real SMS.
  */
 export const sendOTP = async (phoneNumber: string): Promise<void> => {
-  const result = await auth().verifyPhoneNumber(phoneNumber);
-  storedVerificationId = result.verificationId;
+  phoneConfirmation = await auth().signInWithPhoneNumber(phoneNumber);
 };
 
 /**
- * Verify the OTP code and mark the user's phone as verified.
- *
- * Flow:
- * 1. Create phone credential from verification ID + code
- * 2. Try to link to current user (may fail if already linked)
- * 3. Mark phoneVerified: true in Firestore
+ * Verify OTP, then restore email session and mark phone as verified.
  */
 export const verifyOTPAndLink = async (
   _verificationId: string,
   code: string,
 ): Promise<void> => {
-  if (!storedVerificationId) {
-    throw new Error('No verification in progress. Send OTP first.');
+  if (!phoneConfirmation) {
+    throw new Error('No phone confirmation in progress. Send OTP first.');
   }
 
-  const credential = auth.PhoneAuthProvider.credential(storedVerificationId, code);
-  const currentUser = auth().currentUser;
+  // Confirm the OTP
+  await phoneConfirmation.confirm(code);
 
-  if (!currentUser) {
-    throw new Error('No authenticated user found. Please login again.');
+  // Re-sign-in with email to restore original session
+  if (!savedEmailCredentials) {
+    throw new Error('Email credentials not saved. Please login again.');
   }
 
-  // Try to link phone credential to the current email user
-  try {
-    await currentUser.linkWithCredential(credential);
-  } catch (error: unknown) {
-    // Phone may already be linked to this or another account — that's OK.
-    // The OTP was validated by Firebase, so we proceed.
-    const errorCode = (error as { code?: string }).code;
-    console.warn('Phone link skipped:', errorCode || 'unknown');
-  }
+  const emailResult = await auth().signInWithEmailAndPassword(
+    savedEmailCredentials.email,
+    savedEmailCredentials.password,
+  );
 
   // Mark phone as verified in Firestore
-  await firestore().collection('users').doc(currentUser.uid).set(
+  await firestore().collection('users').doc(emailResult.user.uid).set(
     {
       phoneVerified: true,
       updatedAt: firestore.FieldValue.serverTimestamp(),
@@ -85,7 +66,8 @@ export const verifyOTPAndLink = async (
   );
 
   // Cleanup
-  storedVerificationId = null;
+  phoneConfirmation = null;
+  savedEmailCredentials = null;
 };
 
 /**
@@ -122,7 +104,7 @@ export const ensureUserProfile = async (
  * Sign out the current user
  */
 export const signOut = async (): Promise<void> => {
-  storedVerificationId = null;
+  phoneConfirmation = null;
   savedEmailCredentials = null;
   await auth().signOut();
 };
