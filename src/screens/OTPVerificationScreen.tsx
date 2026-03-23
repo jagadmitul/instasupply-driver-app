@@ -22,29 +22,18 @@ export const OTPVerificationScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const handleSendOTP = async () => {
-    // Strip spaces, dashes, and parentheses
-    const cleaned = phoneNumber.trim().replace(/[\s\-()]/g, '');
+    const cleaned = phoneNumber.trim().replace(/\D/g, '');
     if (!cleaned) {
       Alert.alert('Error', 'Please enter your mobile number');
       return;
     }
 
-    // Add +91 if no country code
-    const formatted = cleaned.startsWith('+') ? cleaned : `+91${cleaned}`;
-
-    // Validate: must be + followed by country code and 10 digits (Indian)
-    // or valid international format (7-15 digits after +)
-    const digitsOnly = formatted.replace(/^\+/, '');
-    if (!/^\d{10,15}$/.test(digitsOnly)) {
+    if (cleaned.length !== 10) {
       Alert.alert('Error', 'Please enter a valid 10-digit mobile number');
       return;
     }
 
-    // For Indian numbers, validate exactly 10 digits after +91
-    if (formatted.startsWith('+91') && digitsOnly.length !== 12) {
-      Alert.alert('Error', 'Indian mobile number must be exactly 10 digits');
-      return;
-    }
+    const formatted = `+91${cleaned}`;
 
     setLoading(true);
     try {
@@ -101,11 +90,14 @@ export const OTPVerificationScreen: React.FC = () => {
             <TextInput
               style={styles.input}
               value={phoneNumber}
-              onChangeText={(text) => setPhoneNumber(text.replace(/[^0-9+\-\s]/g, ''))}
+              onChangeText={(text) => {
+                const digitsOnly = text.replace(/[^0-9]/g, '');
+                setPhoneNumber(digitsOnly.slice(0, 10));
+              }}
               placeholder="9876543210"
               placeholderTextColor="#9CA3AF"
-              keyboardType="phone-pad"
-              maxLength={15}
+              keyboardType="number-pad"
+              maxLength={10}
               editable={!loading}
             />
 
