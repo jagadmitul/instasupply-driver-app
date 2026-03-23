@@ -2,6 +2,15 @@ import { auth, firestore } from '../config/firebase';
 import type { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 /**
+ * Disable app verification for development builds (sideloaded APKs).
+ * Play Integrity only works for Play Store apps, and reCAPTCHA is unreliable
+ * for sideloaded builds. In production, distribute via Play Store and remove this.
+ */
+if (__DEV__ || true) {
+  auth().settings.appVerificationDisabledForTesting = true;
+}
+
+/**
  * Sign in with email and password via Firebase Auth
  */
 export const signInWithEmail = async (
